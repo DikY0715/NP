@@ -178,9 +178,10 @@ def verify_borrow(
     current: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """管理员核验中转格口内的实物药品。
+    """管理员核验借药申请。
 
-    不通过直接驳回；通过后有价药品生成支付订单等待居民支付，免费药品进入待出货。
+    不通过直接驳回；通过后若药品不在柜内，通知药主放入中转格口；
+    已核验投放或驿站自营药品直接进入支付 / 待出货。
     """
     request = db.query(BorrowRequest).filter(BorrowRequest.id == request_id).first()
     if request is None:
@@ -188,12 +189,12 @@ def verify_borrow(
     if request.owner and request.owner.community != current.community:
         raise HTTPException(status_code=403, detail="只能处理本小区的借药请求")
     if request.status != "pending_admin":
-        raise HTTPException(status_code=400, detail="该请求当前无需实物核验")
+        raise HTTPException(status_code=400, detail="该请求当前无需核验")
 
     if not payload.compliant:
         request.status = "rejected"
         _sync_request_message(db, request.id, "rejected")
-        content = f"你申请的 {request.medicine_name} 未通过驿站实物核验"
+        content = f"你申请的 {request.medicine_name} 未通过驿站核验"
         if payload.note:
             content += f"。原因：{payload.note}"
         db.add(
@@ -203,8 +204,45 @@ def verify_borrow(
                 sender_id=current.id,
                 request_id=request.id,
                 status="rejected",
-                title="实物核验未通过",
+                title="核验未通过",
                 content=content,
+            )
+        )
+        db.commit()
+        db.refresh(request)
+        return request
+
+    if not request.in_locker:
+        request.status = "pending_owner"
+        _sync_request_message(db, request.id, "pending_owner")
+        db.add(
+            Message(
+                user_id=request.borrower_id,
+                type="system",
+                sender_id=current.id,
+                request_id=request.id,
+                status="pending_owner",
+                title="管理员核验通过，等待药主放入中转格口",
+                content=(
+                    f"你申请的 {request.medicine_name} × {request.quantity}{request.unit} "
+                    f"已通过驿站核验，等待药主将药品放入中转格口"
+                ),
+            )
+        )
+        db.add(
+            Message(
+                user_id=request.owner_id,
+                type="borrow_request",
+                sender_id=current.id,
+                request_id=request.id,
+                status="pending_owner",
+                title="管理员已核验通过，请放入中转格口",
+                content=(
+                    f"{request.borrower.name if request.borrower else '邻居'} 申请借用你的 "
+                    f"{request.medicine_name} × {request.quantity}{request.unit}，"
+                    f"医生与管理员均已通过，请将药品放入驿站中转格口，"
+                    f"并在交易记录中确认投放"
+                ),
             )
         )
         db.commit()

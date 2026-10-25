@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { api, ApiError, formatTime } from '@/lib/api';
 import ChatView, { toBubbles, chatTime, type ChatBubble } from '@/components/ChatView';
-import { MessageSquare, Users } from 'lucide-react';
-import type { ConsultConversation } from '@/types';
+import HealthArchiveSheet from '@/components/HealthArchiveSheet';
+import { FileText, MessageSquare, Users } from 'lucide-react';
+import type { ConsultConversation, HealthArchive } from '@/types';
 
 interface ActiveConv {
   id: string;
+  residentId: string;
   name: string;
   building: string;
 }
@@ -19,6 +21,8 @@ export default function DoctorConsultScreen() {
   const [active, setActive] = useState<ActiveConv | null>(null);
   const [bubbles, setBubbles] = useState<ChatBubble[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [archive, setArchive] = useState<HealthArchive | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   const loadList = useCallback(
     async (silent = false) => {
@@ -47,7 +51,12 @@ export default function DoctorConsultScreen() {
   }, [active, loadList]);
 
   const openConv = async (conv: ConsultConversation) => {
-    setActive({ id: conv.id, name: conv.residentName, building: conv.residentBuilding });
+    setActive({
+      id: conv.id,
+      residentId: conv.residentId,
+      name: conv.residentName,
+      building: conv.residentBuilding,
+    });
     setThreadLoading(true);
     try {
       const thread = await api.consultThread(conv.id);
@@ -79,21 +88,52 @@ export default function DoctorConsultScreen() {
     }
   };
 
+  const openArchive = async () => {
+    if (!active || archiveBusy) return;
+    setArchiveBusy(true);
+    try {
+      setArchive(await api.patientArchive(active.residentId));
+    } catch (err) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        message: err instanceof ApiError ? err.message : '无权查看该档案',
+      });
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
   if (active) {
     return (
-      <ChatView
-        title={active.name}
-        subtitle={active.building}
-        accent="emerald"
-        bubbles={bubbles}
-        loading={threadLoading}
-        emptyHint="暂无消息，回复居民的问诊吧"
-        onSend={send}
-        onBack={() => {
-          setActive(null);
-          loadList();
-        }}
-      />
+      <>
+        <ChatView
+          title={active.name}
+          subtitle={active.building}
+          accent="emerald"
+          bubbles={bubbles}
+          loading={threadLoading}
+          emptyHint="暂无消息，回复居民的问诊吧"
+          onSend={send}
+          headerAction={
+            <button
+              onClick={openArchive}
+              disabled={archiveBusy}
+              className="ml-auto shrink-0 flex flex-col items-center justify-center w-11 h-11 rounded-xl text-emerald-600 active:bg-emerald-50 disabled:opacity-50"
+            >
+              <FileText className="w-5 h-5" />
+              <span className="text-[10px] mt-0.5">档案</span>
+            </button>
+          }
+          onBack={() => {
+            setActive(null);
+            setArchive(null);
+            loadList();
+          }}
+        />
+        {archive && (
+          <HealthArchiveSheet archive={archive} onClose={() => setArchive(null)} />
+        )}
+      </>
     );
   }
 

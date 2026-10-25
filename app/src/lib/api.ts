@@ -1,5 +1,5 @@
 // 后端接口封装
-// - 统一拼接 API_BASE（默认 http://127.0.0.1:8000）
+// - 统一拼接 API_BASE（默认走同源 /api，由 Vite 代理转发到后端）
 // - 自动附带 JWT（存于 localStorage 的 yaolin_token）
 // - 负责后端 snake_case ↔ 前端 camelCase 字段映射，并对齐 id 类型（后端 int → 前端 string）
 
@@ -47,8 +47,14 @@ import type {
 } from '@/types';
 
 const API_BASE = (
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://127.0.0.1:8000'
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) || ''
 ).replace(/\/$/, '');
+
+// 同源代理不可用时（例如页面并非由 Vite 提供），退回直连本机后端的 8000 端口
+const DIRECT_BASE =
+  window.location.protocol === 'https:'
+    ? ''
+    : `http://${window.location.hostname || '127.0.0.1'}:8000`;
 
 const TOKEN_KEY = 'yaolin_token';
 
@@ -87,14 +93,31 @@ async function request<T>(
   }
 
   let res: Response;
+  const primaryUrl = `${API_BASE}${path}`;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(primaryUrl, {
       method: options.method || 'GET',
       headers,
       body,
     });
   } catch {
-    throw new ApiError(0, '无法连接后端服务，请确认后端已启动');
+    const fallbackUrl = API_BASE || !DIRECT_BASE ? '' : `${DIRECT_BASE}${path}`;
+    if (fallbackUrl) {
+      try {
+        res = await fetch(fallbackUrl, {
+          method: options.method || 'GET',
+          headers,
+          body,
+        });
+      } catch {
+        throw new ApiError(
+          0,
+          `无法连接后端服务（${primaryUrl} 与 ${fallbackUrl} 均失败）`,
+        );
+      }
+    } else {
+      throw new ApiError(0, `无法连接后端服务（${primaryUrl}）`);
+    }
   }
 
   if (res.status === 204) return undefined as T;

@@ -42,32 +42,42 @@ export default function AdminDispatchScreen() {
   const [verifyNote, setVerifyNote] = useState('');
   const [verifyBusy, setVerifyBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (tab === 'verify') {
-        const [borrows, drops] = await Promise.all([
-          api.adminBorrows('pending_admin'),
-          api.adminDropoffs('pending_verify'),
-        ]);
-        setList(borrows);
-        setDropoffs(drops);
-      } else {
-        setList(await api.adminBorrows(tab));
-        setDropoffs([]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        if (tab === 'verify') {
+          const [borrows, drops] = await Promise.all([
+            api.adminBorrows('pending_admin'),
+            api.adminDropoffs('pending_verify'),
+          ]);
+          setList(borrows);
+          setDropoffs(drops);
+        } else {
+          setList(await api.adminBorrows(tab));
+          setDropoffs([]);
+        }
+      } catch (err) {
+        if (!silent) {
+          dispatch({
+            type: 'SHOW_TOAST',
+            message: err instanceof ApiError ? err.message : '加载失败',
+          });
+        }
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err) {
-      dispatch({
-        type: 'SHOW_TOAST',
-        message: err instanceof ApiError ? err.message : '加载失败',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, dispatch]);
+    },
+    [tab, dispatch],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = setInterval(() => load(true), 8000);
+    return () => clearInterval(timer);
   }, [load]);
 
   const act = async (id: string, kind: 'dispatch' | 'complete') => {
@@ -145,7 +155,7 @@ export default function AdminDispatchScreen() {
           <h1 className="text-lg font-semibold text-gray-800">借药出货</h1>
         </div>
         <p className="text-xs text-gray-400 mb-3">
-          居民投放与借药需先核验实物：核验通过后医生评估、有价药品待居民支付，支付完成才可出货
+          借药需医生安全审核、管理员核验通过后，通知药主放入中转格口；有价药品待居民付款后才出货
         </p>
         <div className="flex gap-2">
           {TABS.map((t) => (
@@ -249,7 +259,7 @@ export default function AdminDispatchScreen() {
                       </p>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-xs font-medium">
-                      待实物核验
+                      待核验
                     </span>
                   </div>
 
@@ -291,7 +301,7 @@ export default function AdminDispatchScreen() {
                         kind: 'borrow',
                         id: r.id,
                         title: `核验借药：${r.medicineName}`,
-                        subtitle: `${r.borrowerName} 借用 ${r.quantity}${r.unit}，请核对中转格口内实物`,
+                        subtitle: `${r.borrowerName} 借用 ${r.quantity}${r.unit}，请核对借药申请与药主药品信息`,
                       })
                     }
                     className="w-full mt-3 h-10 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white text-sm font-medium active:scale-[0.98] transition-transform flex items-center justify-center gap-1.5"
@@ -427,7 +437,7 @@ export default function AdminDispatchScreen() {
           />
           <div className="relative w-full bg-white rounded-t-3xl p-5 pb-7">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-base font-bold text-gray-800">实物核验</h2>
+              <h2 className="text-base font-bold text-gray-800">核验确认</h2>
               <button
                 onClick={() => !verifyBusy && setVerifyTarget(null)}
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
@@ -446,7 +456,7 @@ export default function AdminDispatchScreen() {
               value={verifyNote}
               onChange={(e) => setVerifyNote(e.target.value)}
               rows={3}
-              placeholder="请记录药品包装、批号、效期等核验情况"
+              placeholder="请记录核验情况与处理意见"
               className="w-full p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 mb-4"
             />
 

@@ -1,7 +1,7 @@
 """借药申请全流程。
 
-居民发起 → 药主放入中转格口（柜内药品跳过）→ 医生安全审核
-→ 管理员实物合规核验 → 有价药品生成支付订单 → 居民支付 → 管理员出货。
+居民发起 → 医生安全审核 → 管理员核验 → 药主放入中转格口（柜内药品跳过）
+→ 有价药品生成支付订单 → 居民支付 → 管理员出货。
 """
 
 from datetime import datetime
@@ -19,12 +19,6 @@ from ..rewards import is_blacklisted
 router = APIRouter(prefix="/api/borrow", tags=["借药"])
 
 
-def _price_hint(medicine: Medicine) -> str:
-    if medicine.unit_price:
-        return f"，单价 ¥{medicine.unit_price}/{medicine.unit}，双重审核通过后需在线支付"
-    return ""
-
-
 @router.post("/requests", response_model=BorrowRequestOut, status_code=status.HTTP_201_CREATED)
 def create_request(
     payload: BorrowRequestCreate,
@@ -33,8 +27,8 @@ def create_request(
 ):
     """居民发起借药请求。
 
-    - 柜内已有药品（驿站自营 / 已核验投放）：直接进入医生安全审核；
-    - 邻居闲置药品：先等待药主响应并放入中转格口。
+    申请一律先进入医生安全审核；医生通过后，若药品不在柜内才通知药主
+    放入中转格口。
     """
     medicine = db.query(Medicine).filter(Medicine.id == payload.medicine_id).first()
     if medicine is None:
@@ -58,9 +52,6 @@ def create_request(
     if medicine.quantity < payload.quantity:
         raise HTTPException(status_code=400, detail="对方库存不足")
 
-    in_locker = medicine.is_cabinet or any(
-        d.status == "verified" for d in medicine.dropoffs
-    )
     request = BorrowRequest(
         medicine_id=medicine.id,
         borrower_id=current.id,
@@ -69,23 +60,11 @@ def create_request(
         quantity=payload.quantity,
         unit=medicine.unit,
         note=payload.note,
-        status="pending" if in_locker else "pending_owner",
+        status="pending",
     )
     db.add(request)
     db.flush()
 
-    if in_locker:
-        title = f"{current.name} 申请借用药品"
-        content = (
-            f"{medicine.name} × {payload.quantity}{medicine.unit}，药品已在柜内，"
-            f"等待医生安全审核{_price_hint(medicine)}"
-        )
-    else:
-        title = f"{current.name} 申请借用你的药品"
-        content = (
-            f"{medicine.name} × {payload.quantity}{medicine.unit}，"
-            f"请将药品放入驿站中转格口，放入后医生将进行安全审核"
-        )
     db.add(
         Message(
             user_id=medicine.owner_id,
@@ -93,8 +72,11 @@ def create_request(
             sender_id=current.id,
             request_id=request.id,
             status=request.status,
-            title=title,
-            content=content,
+            title=f"{current.name} 申请借用你的药品",
+            content=(
+                f"{medicine.name} × {payload.quantity}{medicine.unit}，"
+                f"申请已提交医生安全审核，审核通过后会通知你放入驿站中转格口"
+            ),
         )
     )
     db.commit()
@@ -108,7 +90,7 @@ def owner_dropoff(
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """药主确认已把闲置药品放入中转格口。"""
+    """药主确认已把闲置药品放入中转格口（医生、管理员均已核验通过）。"""
     request = db.query(BorrowRequest).filter(BorrowRequest.id == request_id).first()
     if request is None:
         raise HTTPException(status_code=404, detail="借药请求不存在")
@@ -117,22 +99,46 @@ def owner_dropoff(
     if request.status != "pending_owner":
         raise HTTPException(status_code=400, detail="该请求当前无需药主投放")
 
-    request.status = "pending"
+    amount = request.amount
+    if amount > 0:
+        order = (
+            db.query(PaymentOrder).filter(PaymentOrder.request_id == request.id).first()
+        )
+        if order is None:
+            db.add(
+                PaymentOrder(
+                    request_id=request.id,
+                    borrower_id=request.borrower_id,
+                    amount=amount,
+                    status="pending",
+                )
+            )
+        request.status = "pending_payment"
+        title = "药主已放入中转格口，待支付"
+        content = (
+            f"{request.medicine_name} × {request.quantity}{request.unit} "
+            f"已由药主 {current.name} 放入中转格口，应付 ¥{amount:.2f}，"
+            f"请在交易记录中完成支付"
+        )
+    else:
+        request.status = "approved"
+        title = "药主已放入中转格口，等待驿站出货"
+        content = (
+            f"{request.medicine_name} × {request.quantity}{request.unit} "
+            f"已由药主 {current.name} 放入中转格口，管理员将尽快发放取药码"
+        )
     db.query(Message).filter(
         Message.request_id == request.id, Message.type == "borrow_request"
-    ).update({"status": "pending"})
+    ).update({"status": request.status})
     db.add(
         Message(
             user_id=request.borrower_id,
             type="system",
             sender_id=current.id,
             request_id=request.id,
-            status="pending",
-            title="药主已放入中转格口",
-            content=(
-                f"{request.medicine_name} × {request.quantity}{request.unit} "
-                f"已由药主 {current.name} 放入中转格口，等待医生安全审核"
-            ),
+            status=request.status,
+            title=title,
+            content=content,
         )
     )
     db.commit()

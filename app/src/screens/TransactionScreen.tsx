@@ -35,9 +35,9 @@ export default function TransactionScreen() {
 
   const statusLabel = (status: string) => {
     switch (status) {
-      case 'pending_owner': return '待药主放入中转格口';
+      case 'pending_owner': return '管理员已核验，待药主放入中转格口';
       case 'pending': return '待医生审核';
-      case 'pending_admin': return '待管理员实物核验';
+      case 'pending_admin': return '待管理员核验';
       case 'pending_payment': return '待支付';
       case 'approved': return '待出货取药';
       case 'completed': return '已完成';

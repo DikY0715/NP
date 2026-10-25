@@ -10,7 +10,7 @@ function StatusPill({ status }: { status?: string }) {
       return (
         <div className="mt-2 flex items-center gap-1.5 text-amber-600 text-xs">
           <Clock className="w-4 h-4" />
-          等待药主放入中转格口
+          管理员已核验，等待药主放入中转格口
         </div>
       );
     case 'pending':

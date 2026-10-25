@@ -243,7 +243,7 @@ class BorrowRequestOut(ORMModel):
     note: str = ""
     doctor_id: Optional[int] = None
     doctor_name: str = ""
-    doctor_note: str = ""
+    doctor_note: Optional[str] = ""
     pickup_code: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     dispense_mode: str = "locker"

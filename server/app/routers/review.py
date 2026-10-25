@@ -70,10 +70,10 @@ def decide_borrow(
     _sync_request_message(db, request.id, new_status)
 
     if payload.approved:
-        title = "医生审核通过，等待驿站实物核验"
+        title = "医生审核通过，等待驿站核验"
         content = (
             f"你申请的 {request.medicine_name} 已通过医生安全审核，"
-            f"等待管理员核验中转格口内的实物药品"
+            f"等待管理员核验借药申请与药品信息"
         )
         if payload.note:
             content += f"。医生嘱咐：{payload.note}"

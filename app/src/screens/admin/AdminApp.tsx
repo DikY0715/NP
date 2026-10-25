@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { api } from '@/lib/api';
 import { LayoutDashboard, PackageCheck, Boxes, UserCog, UserRound } from 'lucide-react';
@@ -33,6 +34,28 @@ function currentTab(screen: ScreenName): AdminTab {
 /** 管理员端：独立信息架构，仅包含驿站管理功能。 */
 export default function AdminApp() {
   const { state, dispatch } = useApp();
+  const [todoCount, setTodoCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const [borrows, drops] = await Promise.all([
+          api.adminBorrows('pending_admin'),
+          api.adminDropoffs('pending_verify'),
+        ]);
+        if (alive) setTodoCount(borrows.length + drops.length);
+      } catch {
+        // 轮询失败时保持上一次的待办数
+      }
+    };
+    refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   // 公共药品页：与居民端同一页面（驿站自营 / 闲置药品）
   if (state.currentScreen === 'publicMedicine') {
@@ -118,6 +141,11 @@ export default function AdminApp() {
                 className={`w-6 h-6 ${active ? 'text-indigo-500' : 'text-gray-400'}`}
                 strokeWidth={active ? 2.5 : 1.5}
               />
+              {t.key === 'adminDispatch' && todoCount > 0 && (
+                <span className="absolute top-0 right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-semibold text-center">
+                  {todoCount > 99 ? '99+' : todoCount}
+                </span>
+              )}
               <span className={`text-[10px] ${active ? 'text-indigo-600 font-semibold' : 'text-gray-400'}`}>
                 {t.label}
               </span>

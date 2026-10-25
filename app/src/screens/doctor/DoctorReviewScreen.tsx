@@ -31,31 +31,43 @@ export default function DoctorReviewScreen() {
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (tab === 'approved') {
-        const all = await api.reviewBorrows('all');
-        setList(
-          all.filter((r) =>
-            ['pending_admin', 'pending_payment', 'approved', 'completed'].includes(r.status),
-          ),
-        );
-      } else {
-        setList(await api.reviewBorrows(tab));
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        if (tab === 'approved') {
+          const all = await api.reviewBorrows('all');
+          setList(
+            all.filter((r) =>
+              ['pending_owner', 'pending_admin', 'pending_payment', 'approved', 'completed'].includes(
+                r.status,
+              ),
+            ),
+          );
+        } else {
+          setList(await api.reviewBorrows(tab));
+        }
+      } catch (err) {
+        if (!silent) {
+          dispatch({
+            type: 'SHOW_TOAST',
+            message: err instanceof ApiError ? err.message : '加载失败',
+          });
+        }
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } catch (err) {
-      dispatch({
-        type: 'SHOW_TOAST',
-        message: err instanceof ApiError ? err.message : '加载失败',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, dispatch]);
+    },
+    [tab, dispatch],
+  );
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = setInterval(() => load(true), 8000);
+    return () => clearInterval(timer);
   }, [load]);
 
   const submit = async () => {
@@ -65,7 +77,7 @@ export default function DoctorReviewScreen() {
       await api.decideBorrow(deciding.id, deciding.approved, note.trim());
       dispatch({
         type: 'SHOW_TOAST',
-        message: deciding.approved ? '已通过，等待驿站实物核验' : '已驳回该借药申请',
+        message: deciding.approved ? '已通过，等待驿站核验' : '已驳回该借药申请',
       });
       setDeciding(null);
       setNote('');

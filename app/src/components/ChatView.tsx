@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, Send } from 'lucide-react';
 import type { ConsultMessage } from '@/types';
 
@@ -19,6 +19,7 @@ interface ChatViewProps {
   emptyHint?: string;
   onSend: (text: string) => Promise<void>;
   onBack?: () => void;
+  headerAction?: ReactNode;
 }
 
 const ACCENT = {
@@ -59,6 +60,7 @@ export default function ChatView({
   emptyHint,
   onSend,
   onBack,
+  headerAction,
 }: ChatViewProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -100,10 +102,11 @@ export default function ChatView({
         >
           <span className="text-white font-semibold text-sm">{title.slice(0, 1)}</span>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-base font-semibold text-gray-800 truncate">{title}</h1>
           {subtitle && <p className="text-xs text-gray-400 truncate">{subtitle}</p>}
         </div>
+        {headerAction}
       </div>
 
       {/* Messages */}

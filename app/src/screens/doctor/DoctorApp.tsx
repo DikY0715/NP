@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { api } from '@/lib/api';
 import { ClipboardCheck, ShieldCheck, MessageSquare, UserRound } from 'lucide-react';
 import type { ScreenName } from '@/types';
 import DoctorReviewScreen from './DoctorReviewScreen';
@@ -27,6 +29,25 @@ function currentTab(screen: ScreenName): DoctorTab {
 export default function DoctorApp() {
   const { state, dispatch } = useApp();
   const tab = currentTab(state.currentScreen);
+  const [pendingReview, setPendingReview] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const list = await api.reviewBorrows('pending');
+        if (alive) setPendingReview(list.length);
+      } catch {
+        // 轮询失败时保持上一次的待办数
+      }
+    };
+    refresh();
+    const timer = setInterval(refresh, 10000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   if (state.currentScreen === 'reportInbox') {
     return (
@@ -61,6 +82,11 @@ export default function DoctorApp() {
                 className={`w-6 h-6 ${active ? 'text-emerald-500' : 'text-gray-400'}`}
                 strokeWidth={active ? 2.5 : 1.5}
               />
+              {t.key === 'doctorReview' && pendingReview > 0 && (
+                <span className="absolute top-0 right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 font-semibold text-center">
+                  {pendingReview > 99 ? '99+' : pendingReview}
+                </span>
+              )}
               <span className={`text-[10px] ${active ? 'text-emerald-600 font-semibold' : 'text-gray-400'}`}>
                 {t.label}
               </span>

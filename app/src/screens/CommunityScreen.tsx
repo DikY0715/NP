@@ -77,9 +77,9 @@ export default function CommunityScreen() {
 
   const borrowStateHint = (status: BorrowState): string => {
     switch (status) {
-      case 'pending_owner': return '已提交，等待药主放入中转格口';
-      case 'pending': return '药主已放入中转格口，等待医生安全审核';
-      case 'pending_admin': return '医生审核通过，等待驿站实物核验';
+      case 'pending_owner': return '管理员已核验，等待药主放入中转格口';
+      case 'pending': return '已提交，等待医生安全审核';
+      case 'pending_admin': return '医生审核通过，等待驿站核验';
       case 'pending_payment': return '核验通过，请前往交易记录完成支付';
       default: return '';
     }
