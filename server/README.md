@@ -157,6 +157,6 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ## 说明
 
 - **效期状态** 不落库，在序列化时依据 `expiry_date` 实时计算（30 天内为临期）。
-- **前端接入**：前端默认地址为 `http://localhost:5173`，已加入 CORS 白名单。
+- **前端接入**：前端默认地址为 `http://localhost:3000`，已加入 CORS 白名单。
   前端调用接口时需在请求头附带 JWT 令牌。
 - **数据重置**：删除 `server/yaolin.db` 后重新运行 `python -m app.seed` 即可。
