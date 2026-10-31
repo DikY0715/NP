@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { ensureNotificationPermission } from '@/lib/notifications';
 import { 
   ChevronRight, 
   HelpCircle, 
@@ -105,6 +106,7 @@ export default function ProfileScreen() {
             const v = !borrowNotif;
             setBorrowNotif(v);
             localStorage.setItem('yaolin_notif_borrow', String(v));
+            if (v) void ensureNotificationPermission();
           },
           isOn: borrowNotif,
         },
@@ -116,6 +118,7 @@ export default function ProfileScreen() {
             const v = !expiryNotif;
             setExpiryNotif(v);
             localStorage.setItem('yaolin_notif_expiry', String(v));
+            if (v) void ensureNotificationPermission();
           },
           isOn: expiryNotif,
         },

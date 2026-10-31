@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import type {
   ScreenName,
   TabName,
@@ -14,6 +14,7 @@ import type {
   ExpiryStatus
 } from '@/types';
 import { api, getToken, setToken, clearToken, ApiError } from '@/lib/api';
+import { pushNotification, notifEnabled, ensureNotificationPermission } from '@/lib/notifications';
 
 // Tab 到 Screen 的映射
 const tabScreenMap: Record<TabName, ScreenName> = {
@@ -268,6 +269,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [loadAll]);
+
+  // 首次登录后（居民端）申请系统通知权限（静默，不弹权限框的浏览器会忽略）
+  useEffect(() => {
+    if ((state.user?.role ?? 'user') === 'user') {
+      void ensureNotificationPermission();
+    }
+  }, [state.user?.role]);
+
+  // 系统通知轮询：居民端定时拉取消息/药品，检测新借药消息与临近过期药品
+  const seenMsgIds = useRef<Set<string>>(new Set());
+  const seenExpiringIds = useRef<Set<string>>(new Set());
+  const notifInitialized = useRef(false);
+
+  useEffect(() => {
+    const role = state.user?.role ?? 'user';
+    if (!state.user || role !== 'user') return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const [messages, medicines] = await Promise.all([
+          api.listMessages(),
+          api.listMedicines(),
+        ]);
+        if (cancelled) return;
+
+        // 借药提醒：出现新的「借药申请/审核」未读消息
+        if (notifEnabled('borrow')) {
+          for (const m of messages) {
+            if (m.type === 'borrow_request' && !m.read && !seenMsgIds.current.has(m.id)) {
+              if (notifInitialized.current) {
+                pushNotification('borrow', '借药提醒', m.title || '您有新的借药消息');
+              }
+            }
+            seenMsgIds.current.add(m.id);
+          }
+        }
+
+        // 过期提醒：出现新进入「即将过期/已过期」状态的药品
+        if (notifEnabled('expiry')) {
+          for (const med of medicines) {
+            if (med.status === 'expiring' || med.status === 'expired') {
+              if (!seenExpiringIds.current.has(med.id) && notifInitialized.current) {
+                pushNotification(
+                  'expiry',
+                  '过期提醒',
+                  `「${med.name}」${med.status === 'expired' ? '已过期' : '即将过期'}`,
+                );
+              }
+              seenExpiringIds.current.add(med.id);
+            }
+          }
+        }
+
+        notifInitialized.current = true;
+      } catch {
+        // 轮询失败静默处理，避免打扰用户
+      }
+    };
+
+    const timer = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [state.user?.role]);
 
   const showToast = useCallback((message: string) => {
     dispatch({ type: 'SHOW_TOAST', message });

@@ -57,6 +57,11 @@ export default function HomeScreen() {
   const { state, dispatch } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFabMenu, setShowFabMenu] = useState(false);
+  const [demoLoc, setDemoLoc] = useState(false);
+
+  const locate = () => {
+    setDemoLoc(true);
+  };
 
   const filteredMedicines = searchQuery
     ? state.medicines.filter(m => 
@@ -87,15 +92,13 @@ export default function HomeScreen() {
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <p className="text-xs text-gray-500">阳光花园</p>
-                <button
-                  onClick={() => dispatch({ type: 'SHOW_TOAST', message: '已自动定位：阳光花园·3栋2单元' })}
-                  className="w-4 h-4 flex items-center justify-center"
-                >
-                  <MapPin className="w-3 h-3 text-orange-500" />
+                <p className="text-xs text-gray-500">{state.user?.community || '阳光花园'}</p>
+                <button onClick={locate} className="w-4 h-4 flex items-center justify-center">
+                  <MapPin className={`w-3 h-3 ${demoLoc ? 'text-emerald-500' : 'text-orange-500'}`} />
                 </button>
               </div>
-              <p className="text-sm font-medium text-gray-800">3栋2单元</p>
+              <p className="text-sm font-medium text-gray-800">{state.user?.building || '3栋2单元'}</p>
+              {demoLoc && <p className="text-[10px] text-emerald-600">目前此定位为演示定位</p>}
             </div>
           </div>
 

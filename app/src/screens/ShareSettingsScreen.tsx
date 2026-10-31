@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { ChevronLeft, Pill, Eye, EyeOff, Heart, DollarSign, Ban } from 'lucide-react';
+import { ChevronLeft, Pill, Eye, EyeOff, Heart, Ban } from 'lucide-react';
 import type { Visibility, ShareMode, ShareScope } from '@/types';
 
 export default function ShareSettingsScreen() {
@@ -11,7 +11,6 @@ export default function ShareSettingsScreen() {
   const [visibility, setVisibility] = useState<Visibility>(medicine?.visibility ?? 'public');
   const [shareMode, setShareMode] = useState<ShareMode>(medicine?.shareMode ?? 'free');
   const [shareScope, setShareScope] = useState<ShareScope>(medicine?.shareScope ?? 'building');
-  const [unitPrice, setUnitPrice] = useState(medicine?.unitPrice?.toString() ?? '');
 
   if (!medicine) {
     return (
@@ -26,7 +25,6 @@ export default function ShareSettingsScreen() {
       visibility,
       shareMode,
       shareScope,
-      unitPrice: shareMode === 'priced' ? parseFloat(unitPrice) || 0 : undefined,
     });
     dispatch({ type: 'SHOW_TOAST', message: '共享设置已保存' });
     dispatch({ type: 'GO_BACK' });
@@ -40,7 +38,6 @@ export default function ShareSettingsScreen() {
 
   const shareModeOptions: { key: ShareMode; label: string; desc: string; icon: typeof Heart }[] = [
     { key: 'free', label: '免费赠送', desc: '邻里人情，免费共享', icon: Heart },
-    { key: 'priced', label: '按颗粒计价', desc: '灵活定价，公平借出', icon: DollarSign },
     { key: 'none', label: '暂不共享', desc: '仅自己使用', icon: Ban },
   ];
 
@@ -148,24 +145,6 @@ export default function ShareSettingsScreen() {
                 </button>
               ))}
             </div>
-
-            {/* Unit Price Input */}
-            {shareMode === 'priced' && (
-              <div className="mt-3 bg-white rounded-xl p-4">
-                <label className="text-sm text-gray-600 mb-2 block">单价（元/{medicine.unit}）</label>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg text-gray-400">¥</span>
-                  <input
-                    type="number"
-                    value={unitPrice}
-                    onChange={(e) => setUnitPrice(e.target.value)}
-                    placeholder="0.00"
-                    className="flex-1 h-10 text-lg font-semibold focus:outline-none"
-                  />
-                  <span className="text-sm text-gray-400">/{medicine.unit}</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

@@ -11,6 +11,7 @@ export default function MedicineDetailScreen() {
   const [dropoffQty, setDropoffQty] = useState(1);
   const [dropoffNote, setDropoffNote] = useState('');
   const [dropoffBusy, setDropoffBusy] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const medicine = state.medicines.find(m => m.id === state.selectedMedicineId);
 
   // Edit states
@@ -152,7 +153,7 @@ export default function MedicineDetailScreen() {
         {/* Medicine Header Card */}
         <div className="bg-gradient-to-br from-orange-400 to-amber-500 px-6 pt-6 pb-8">
           <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-white/20 flex items-center justify-center border-2 border-white/30 overflow-hidden">
+            <div className="w-20 h-20 rounded-2xl bg-white/20 flex items-center justify-center border-2 border-white/30 overflow-hidden" onClick={() => medicine.images && medicine.images.length > 0 && !isEditing && setPreviewImage(medicine.images[0])}>
               {medicine.images && medicine.images.length > 0 && !isEditing ? (
                 <img src={medicine.images[0]} alt={medicine.name} className="w-full h-full object-cover" />
               ) : (
@@ -215,7 +216,7 @@ export default function MedicineDetailScreen() {
               <h3 className="text-sm font-medium text-gray-700 mb-3">药品图片</h3>
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {medicine.images.map((img, idx) => (
-                  <div key={idx} className="w-24 h-24 rounded-xl overflow-hidden shrink-0">
+                  <div key={idx} className="w-24 h-24 rounded-xl overflow-hidden shrink-0" onClick={() => setPreviewImage(img)}>
                     <img src={img} alt={`药品图片${idx + 1}`} className="w-full h-full object-cover" />
                   </div>
                 ))}
@@ -226,24 +227,18 @@ export default function MedicineDetailScreen() {
           {/* Quick Stats */}
           <div className="bg-white rounded-2xl p-4 shadow-md mb-4">
             {isEditing ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">数量</label>
-                  <div className="flex gap-1">
-                    <input value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} className="w-full h-10 px-2 rounded-lg bg-orange-50 border border-orange-100 text-sm" />
-                    <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="h-10 px-1 rounded-lg bg-orange-50 border border-orange-100 text-sm">
-                      <option value="粒">粒</option>
-                      <option value="片">片</option>
-                      <option value="袋">袋</option>
-                      <option value="瓶">瓶</option>
-                      <option value="盒">盒</option>
-                      <option value="ml">ml</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">有效期</label>
-                  <input type="date" value={editExpiry} onChange={(e) => setEditExpiry(e.target.value)} className="w-full h-10 px-2 rounded-lg bg-orange-50 border border-orange-100 text-sm" />
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">数量</label>
+                <div className="flex gap-1">
+                  <input value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} className="w-full h-10 px-2 rounded-lg bg-orange-50 border border-orange-100 text-sm" />
+                  <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className="h-10 px-1 rounded-lg bg-orange-50 border border-orange-100 text-sm">
+                    <option value="粒">粒</option>
+                    <option value="片">片</option>
+                    <option value="袋">袋</option>
+                    <option value="瓶">瓶</option>
+                    <option value="盒">盒</option>
+                    <option value="ml">ml</option>
+                  </select>
                 </div>
               </div>
             ) : (
@@ -457,6 +452,19 @@ export default function MedicineDetailScreen() {
               <button onClick={handleDelete} className="flex-1 h-12 rounded-xl bg-red-500 text-white font-medium active:scale-[0.98] transition-transform">删除</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setPreviewImage(null)}>
+          <button
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center"
+          >
+            <X className="w-5 h-5 text-white" />
+          </button>
+          <img src={previewImage} alt="药品大图" className="max-w-full max-h-full object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 
