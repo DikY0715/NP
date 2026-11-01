@@ -201,6 +201,7 @@ export interface AppActions {
   addHelpPost: (input: HelpPostInput) => Promise<void>;
   respondHelp: (postId: string, message?: string) => Promise<void>;
   borrowMedicine: (medicineId: string, quantity: number, note?: string) => Promise<void>;
+  confirmPickup: (requestId: string) => Promise<void>;
   markMessageRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   updateProfile: (updates: {
@@ -411,6 +412,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await api.createBorrow(medicineId, quantity, note);
         await loadAll();
       },
+      confirmPickup: async (requestId: string) => {
+        await api.confirmPickup(requestId);
+        await loadAll();
+      },
       markMessageRead: async (id: string) => {
         dispatch({ type: 'MARK_MESSAGE_READ', id });
         try {
@@ -452,6 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addHelpPost: wrap(actions.addHelpPost, '发布求助失败'),
       respondHelp: wrap(actions.respondHelp, '回应失败'),
       borrowMedicine: wrap(actions.borrowMedicine, '借药申请失败'),
+      confirmPickup: wrap(actions.confirmPickup, '确认取药失败'),
       markAllRead: wrap(actions.markAllRead, '操作失败'),
       updateProfile: wrap(actions.updateProfile, '保存失败'),
     };

@@ -48,6 +48,7 @@ def list_transactions(
                 status=r.status,
                 price=price,
                 payment_status=r.payment_status,
+                pickup_code=r.pickup_code,
                 timestamp=r.created_at,
             )
         )

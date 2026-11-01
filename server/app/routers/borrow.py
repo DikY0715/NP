@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+import random
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,7 +15,7 @@ from ..database import get_db
 from ..deps import get_current_user, require_resident
 from ..models import BorrowRequest, Medicine, Message, PaymentOrder, User
 from ..schemas import BorrowRequestCreate, BorrowRequestOut
-from ..rewards import is_blacklisted
+from ..rewards import add_points, is_blacklisted
 
 router = APIRouter(prefix="/api/borrow", tags=["借药"])
 
@@ -122,11 +123,22 @@ def owner_dropoff(
         )
     else:
         request.status = "approved"
-        title = "药主已放入中转格口，等待驿站出货"
-        content = (
-            f"{request.medicine_name} × {request.quantity}{request.unit} "
-            f"已由药主 {current.name} 放入中转格口，管理员将尽快发放取药码"
-        )
+        # 药主确认投放后即生成取药码，借药人与药主都能看到
+        if request.dispense_mode == "locker" and not request.pickup_code:
+            request.pickup_code = f"{random.randint(0, 999999):06d}"
+        if request.pickup_code:
+            title = "药主已放入中转格口，取药码已生成"
+            content = (
+                f"{request.medicine_name} × {request.quantity}{request.unit} "
+                f"已由药主 {current.name} 放入中转格口，取药码：{request.pickup_code}，"
+                f"请凭码到驿站取药"
+            )
+        else:
+            title = "药主已放入中转格口，等待驿站出货"
+            content = (
+                f"{request.medicine_name} × {request.quantity}{request.unit} "
+                f"已由药主 {current.name} 放入中转格口，管理员将尽快出货"
+            )
     db.query(Message).filter(
         Message.request_id == request.id, Message.type == "borrow_request"
     ).update({"status": request.status})
@@ -141,6 +153,22 @@ def owner_dropoff(
             content=content,
         )
     )
+    if request.pickup_code:
+        db.add(
+            Message(
+                user_id=request.owner_id,
+                type="system",
+                sender_id=current.id,
+                request_id=request.id,
+                status=request.status,
+                title="取药码已生成",
+                content=(
+                    f"你共享的 {request.medicine_name} × {request.quantity}{request.unit} "
+                    f"已放入中转格口，取药码：{request.pickup_code}，"
+                    f"双方可凭码当面完成交接"
+                ),
+            )
+        )
     db.commit()
     db.refresh(request)
     return request
@@ -180,6 +208,46 @@ def pay_request(
             content=(
                 f"已支付 ¥{order.amount:.2f}，{request.medicine_name} × "
                 f"{request.quantity}{request.unit} 将尽快由驿站出货"
+            ),
+        )
+    )
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+@router.post("/requests/{request_id}/pickup", response_model=BorrowRequestOut)
+def borrower_confirm_pickup(
+    request_id: int,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """借药人凭码取到药后确认完成，与管理员确认完成等价：扣库存、加积分。"""
+    request = db.query(BorrowRequest).filter(BorrowRequest.id == request_id).first()
+    if request is None:
+        raise HTTPException(status_code=404, detail="借药请求不存在")
+    if request.borrower_id != current.id:
+        raise HTTPException(status_code=403, detail="只能确认自己的借药订单")
+    if request.status != "approved":
+        raise HTTPException(status_code=400, detail="该订单当前不能确认取药")
+
+    request.status = "completed"
+    add_points(db, request.borrower_id, 5, "完成一次借药")
+    medicine = request.medicine
+    if medicine is not None and medicine.quantity >= request.quantity:
+        medicine.quantity -= request.quantity
+
+    db.add(
+        Message(
+            user_id=request.owner_id,
+            type="system",
+            request_id=request.id,
+            status="completed",
+            title="借药已完成",
+            content=(
+                f"{current.name} 已凭取药码完成领取 "
+                f"{request.medicine_name} × {request.quantity}{request.unit}，"
+                f"本次邻里互助已完成"
             ),
         )
     )

@@ -272,10 +272,16 @@ def verify_borrow(
         )
     else:
         request.status = "approved"
-        title = "实物核验通过，等待驿站出货"
+        # 柜内已有实物时核验通过即生成取药码，借药人与药主都能看到
+        if request.dispense_mode == "locker" and not request.pickup_code:
+            request.pickup_code = f"{random.randint(0, 999999):06d}"
+        title = "实物核验通过，取药码已生成" if request.pickup_code else "实物核验通过，等待驿站出货"
         content = (
             f"你申请的 {request.medicine_name} × {request.quantity}{request.unit} "
-            f"已通过驿站实物核验，管理员将尽快发放取药码"
+            f"已通过驿站实物核验，取药码：{request.pickup_code}，请凭码到驿站取药"
+            if request.pickup_code
+            else f"你申请的 {request.medicine_name} × {request.quantity}{request.unit} "
+            f"已通过驿站实物核验，管理员将尽快出货"
         )
     _sync_request_message(db, request.id, request.status)
     db.add(
@@ -411,6 +417,23 @@ def dispatch_borrow(
                 ),
             )
         )
+        # 药主同样需要取药码，便于当面交接时核对
+        if request.owner_id and request.owner_id != request.borrower_id:
+            db.add(
+                Message(
+                    user_id=request.owner_id,
+                    type="system",
+                    sender_id=current.id,
+                    request_id=request.id,
+                    status="approved",
+                    title="取药码已发放",
+                    content=(
+                        f"你共享的 {request.medicine_name} × {request.quantity}{request.unit} "
+                        f"已完成驿站出货，取药码：{request.pickup_code}，"
+                        f"双方可凭码当面完成交接"
+                    ),
+                )
+            )
     db.commit()
     db.refresh(request)
     return request

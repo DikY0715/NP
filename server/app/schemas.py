@@ -395,6 +395,7 @@ class TransactionOut(BaseModel):
     status: str
     price: Optional[float] = None
     payment_status: Optional[str] = None
+    pickup_code: Optional[str] = None
     timestamp: datetime
 
 

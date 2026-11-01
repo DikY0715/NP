@@ -402,6 +402,7 @@ interface RawTransaction {
   status: string;
   price: number | null;
   payment_status: string | null;
+  pickup_code: string | null;
   timestamp: string;
 }
 
@@ -532,6 +533,7 @@ function toTransaction(raw: RawTransaction): Transaction {
       raw.payment_status === 'paid' || raw.payment_status === 'pending'
         ? raw.payment_status
         : undefined,
+    pickupCode: raw.pickup_code || undefined,
   };
 }
 
@@ -1189,6 +1191,15 @@ export const api = {
   async payBorrow(requestId: string): Promise<BorrowRequest> {
     const raw = await request<RawBorrowRequest>(
       `/api/borrow/requests/${requestId}/pay`,
+      { method: 'POST' },
+    );
+    return toBorrowRequest(raw);
+  },
+
+  /** 借药人凭码取到药后确认完成 */
+  async confirmPickup(requestId: string): Promise<BorrowRequest> {
+    const raw = await request<RawBorrowRequest>(
+      `/api/borrow/requests/${requestId}/pickup`,
       { method: 'POST' },
     );
     return toBorrowRequest(raw);

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { MapPin, Pill, Heart, MessageCircle, Plus, Search, Info, Clock, CheckCircle2, X, Minus } from 'lucide-react';
+import { MapPin, Pill, Heart, MessageCircle, Plus, Search, Info, Clock, CheckCircle2, X, Minus, Ticket } from 'lucide-react';
 import type { CommunityMedicine, ShareScope } from '@/types';
 
 type CommunityTab = 'medicines' | 'help';
@@ -67,8 +67,10 @@ export default function CommunityScreen() {
       case 'pending_payment':
         return t.status;
       case 'approved':
-      case 'completed':
         return 'accepted';
+      case 'completed':
+        // 已完成的单子不再占用卡片，可再次申请
+        return 'idle';
       default:
         // rejected 后允许重新申请
         return 'idle';
@@ -90,9 +92,10 @@ export default function CommunityScreen() {
     actions.loadCommunity(next);
   };
 
-  // 进入页面时按当前范围拉取社区药品
+  // 进入页面时拉取最新社区药品与交易状态，确保借用按钮与取药码状态准确
   useEffect(() => {
     actions.loadCommunity(scope);
+    void actions.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -177,7 +180,7 @@ export default function CommunityScreen() {
         {status === 'accepted' && (
           <div className="mt-2 flex items-center gap-1.5 text-green-600 text-xs">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            审核通过，等待驿站出货取药
+            取药码已生成，可在交易记录查看
           </div>
         )}
 
@@ -201,16 +204,22 @@ export default function CommunityScreen() {
             </button>
           )}
           {status !== 'idle' && status !== 'accepted' && (
-            <div className="flex-1 h-9 rounded-lg bg-amber-50 text-amber-600 text-sm font-medium flex items-center justify-center gap-1.5">
+            <button
+              onClick={() => dispatch({ type: 'NAVIGATE', screen: 'transaction' })}
+              className="flex-1 h-9 rounded-lg bg-amber-50 text-amber-600 text-sm font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            >
               <Clock className="w-3.5 h-3.5" />
-              {status === 'pending_payment' ? '待支付' : '进行中'}
-            </div>
+              查看进度
+            </button>
           )}
           {status === 'accepted' && (
-            <div className="flex-1 h-9 rounded-lg bg-green-50 text-green-600 text-sm font-medium flex items-center justify-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              审核通过
-            </div>
+            <button
+              onClick={() => dispatch({ type: 'NAVIGATE', screen: 'transaction' })}
+              className="flex-1 h-9 rounded-lg bg-green-50 text-green-600 text-sm font-medium flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+            >
+              <Ticket className="w-3.5 h-3.5" />
+              查看取药码
+            </button>
           )}
           <button
             onClick={() => {
@@ -228,6 +237,9 @@ export default function CommunityScreen() {
   };
 
   const helpPosts = state.helpPosts;
+
+  // 本次已回应的求助：回应后"我有"置灰，私信入口高亮
+  const [respondedIds, setRespondedIds] = useState<string[]>([]);
 
   return (
     <div className="flex flex-col h-full w-full bg-orange-50/50" style={{ height: '100%' }}>
@@ -335,23 +347,34 @@ export default function CommunityScreen() {
                   <div className="flex gap-2">
                     <button 
                       onClick={async () => {
+                        if (respondedIds.includes(post.id)) return;
                         await actions.respondHelp(post.id, '我可以提供帮助');
-                        dispatch({ type: 'SHOW_TOAST', message: '已回应求助' });
+                        setRespondedIds(prev => [...prev, post.id]);
+                        dispatch({ type: 'SHOW_TOAST', message: '已回应求助，可私信与邻居沟通' });
                       }}
-                      className="flex items-center gap-1 px-4 py-1.5 bg-gradient-to-r from-orange-400 to-amber-500 text-white rounded-full text-xs font-medium active:scale-95 transition-transform"
+                      disabled={respondedIds.includes(post.id)}
+                      className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-medium transition-transform ${
+                        respondedIds.includes(post.id)
+                          ? 'bg-gray-100 text-gray-400'
+                          : 'bg-gradient-to-r from-orange-400 to-amber-500 text-white active:scale-95'
+                      }`}
                     >
                       <Heart className="w-3 h-3" />
-                      我有
+                      {respondedIds.includes(post.id) ? '已回应' : '我有'}
                     </button>
                     <button 
                       onClick={() => {
                         dispatch({ type: 'SELECT_MEDICINE', id: `chat_${post.authorName}` });
                         dispatch({ type: 'NAVIGATE', screen: 'chat' });
                       }}
-                      className="flex items-center gap-1 px-4 py-1.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium active:scale-95 transition-transform"
+                      className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-medium active:scale-95 transition-transform ${
+                        respondedIds.includes(post.id)
+                          ? 'bg-gradient-to-r from-orange-400 to-amber-500 text-white'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
                     >
                       <MessageCircle className="w-3 h-3" />
-                      私聊
+                      {respondedIds.includes(post.id) ? '私信沟通' : '私聊'}
                     </button>
                   </div>
                 </div>
@@ -382,7 +405,7 @@ export default function CommunityScreen() {
       {borrowTarget && (
         <div className="absolute inset-0 z-40 flex items-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => !submitting && setBorrowTarget(null)} />
-          <div className="relative w-full bg-white rounded-t-3xl p-5 pb-7 max-h-[85%] overflow-y-auto">
+          <div className="relative w-full bg-white rounded-t-3xl p-5 pb-24 max-h-[85%] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-base font-bold text-gray-800">申请借用药品</h2>
               <button

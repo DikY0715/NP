@@ -118,6 +118,8 @@ export interface Transaction {
   timestamp: string;
   price?: number;
   paymentStatus?: 'pending' | 'paid';
+  /** 取药码（驿站出货后生成，借入方与药主都可见） */
+  pickupCode?: string;
 }
 
 // 借药申请单（医生审核 / 管理员出货使用）

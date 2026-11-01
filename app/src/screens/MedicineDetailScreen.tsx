@@ -49,7 +49,7 @@ export default function MedicineDetailScreen() {
       unit: editUnit,
       dosage: editDosage.trim() || undefined,
       symptoms: editSymptoms.length > 0 ? editSymptoms : medicine.symptoms,
-      images: editImages.length > 0 ? editImages : undefined,
+      images: editImages,
     });
     setIsEditing(false);
     dispatch({ type: 'SHOW_TOAST', message: '药品信息已更新' });

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { api } from '@/lib/api';
-import { ChevronLeft, ArrowDownLeft, ArrowUpRight, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronLeft, ArrowDownLeft, ArrowUpRight, Clock, CheckCircle2, XCircle, Ticket } from 'lucide-react';
 // Transaction type used inline
 
 type TxFilter = 'all' | 'borrow_in' | 'borrow_out';
@@ -10,6 +10,11 @@ export default function TransactionScreen() {
   const { state, dispatch, actions } = useApp();
   const [filter, setFilter] = useState<TxFilter>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // 进入交易记录时拉取最新状态，确保取药码等审核结果及时出现
+  useEffect(() => {
+    void actions.refresh();
+  }, [actions]);
 
   const filtered = state.transactions.filter(t => {
     if (filter === 'all') return true;
@@ -63,6 +68,17 @@ export default function TransactionScreen() {
       await api.ownerDropoff(id);
       await actions.refresh();
       dispatch({ type: 'SHOW_TOAST', message: '已确认放入中转格口' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleConfirmPickup = async (id: string) => {
+    setBusyId(id);
+    try {
+      await api.confirmPickup(id);
+      await actions.refresh();
+      dispatch({ type: 'SHOW_TOAST', message: '已确认取药，本次互助完成' });
     } finally {
       setBusyId(null);
     }
@@ -157,7 +173,30 @@ export default function TransactionScreen() {
                         disabled={busyId === tx.id}
                         className="mt-2 h-8 px-4 rounded-lg bg-orange-50 text-orange-600 text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
                       >
-                        {busyId === tx.id ? '提交中…' : '已放入中转格口'}
+                        {busyId === tx.id ? '提交中…' : '确认已放入中转格口'}
+                      </button>
+                    )}
+                    {tx.pickupCode && (
+                      <div className="mt-2 flex items-center gap-3 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 px-3 py-2">
+                        <Ticket className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <div>
+                          <p className="text-[10px] text-emerald-600">取药码</p>
+                          <p className="text-xl font-bold tracking-[0.3em] text-emerald-700 leading-tight">
+                            {tx.pickupCode}
+                          </p>
+                        </div>
+                        <p className="ml-auto text-[10px] text-emerald-600 text-right">
+                          {tx.type === 'borrow_in' ? '凭码到驿站取药' : '凭码与邻居交接'}
+                        </p>
+                      </div>
+                    )}
+                    {tx.type === 'borrow_in' && tx.status === 'approved' && (
+                      <button
+                        onClick={() => handleConfirmPickup(tx.id)}
+                        disabled={busyId === tx.id}
+                        className="mt-2 h-8 px-4 rounded-lg bg-gradient-to-r from-emerald-400 to-green-500 text-white text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
+                      >
+                        {busyId === tx.id ? '提交中…' : '确认已取药'}
                       </button>
                     )}
                   </div>

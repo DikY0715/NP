@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Bell, CheckCircle2, XCircle, User, Clock, PackageCheck } from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
+import { Bell, CheckCircle2, XCircle, User, Clock, PackageCheck, Ticket } from 'lucide-react';
 
 type MessageFilter = 'all' | 'borrow' | 'system';
 
@@ -63,6 +64,38 @@ function StatusPill({ status }: { status?: string }) {
 export default function MessageScreen() {
   const { state, dispatch, actions } = useApp();
   const [filter, setFilter] = useState<MessageFilter>('all');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // 进入消息页时拉取最新状态，确保取药码等审核结果及时出现
+  useEffect(() => {
+    void actions.refresh();
+  }, [actions]);
+
+  // 取药码：按借药请求 id 关联到消息上，借药人与药主都能在消息里直接看到
+  const codeByRequest = useMemo(() => {
+    const map: Record<string, string> = {};
+    state.transactions.forEach((t) => {
+      if (t.pickupCode) map[t.id] = t.pickupCode;
+    });
+    return map;
+  }, [state.transactions]);
+
+  const handleOwnerDropoff = async (msgId: string, requestId?: string) => {
+    if (!requestId) return;
+    setBusyId(msgId);
+    try {
+      await api.ownerDropoff(requestId);
+      await actions.refresh();
+      dispatch({ type: 'SHOW_TOAST', message: '已确认放入中转格口，取药码已生成' });
+    } catch (err) {
+      dispatch({
+        type: 'SHOW_TOAST',
+        message: err instanceof ApiError ? err.message : '操作失败',
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const filteredMessages = state.messages.filter(m => {
     if (filter === 'all') return true;
@@ -150,6 +183,27 @@ export default function MessageScreen() {
                   <p className="text-sm text-gray-600 mb-1">{msg.content}</p>
                   <p className="text-xs text-gray-400">{msg.timestamp}</p>
                   <StatusPill status={msg.status} />
+                  {msg.type === 'borrow_request' && msg.status === 'pending_owner' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOwnerDropoff(msg.id, msg.requestId);
+                      }}
+                      disabled={busyId === msg.id}
+                      className="mt-2 h-8 px-4 rounded-lg bg-orange-500 text-white text-xs font-medium active:scale-[0.98] transition-transform disabled:opacity-50"
+                    >
+                      {busyId === msg.id ? '提交中…' : '确认已放入中转格口'}
+                    </button>
+                  )}
+                  {msg.requestId && codeByRequest[msg.requestId] && (
+                    <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 px-3 py-1.5">
+                      <Ticket className="w-4 h-4 text-emerald-500" />
+                      <span className="text-xs text-emerald-600">取药码</span>
+                      <span className="text-base font-bold tracking-[0.25em] text-emerald-700">
+                        {codeByRequest[msg.requestId]}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
