@@ -186,9 +186,9 @@ def get_confusion() -> Dict[Tuple[str, str], float]:
 
 # 常见剂型后缀：纠错时先剥离，纠完再拼回，避免把「胶囊/片」当成错字删掉
 DOSAGE_FORMS: List[str] = [
-    "分散片", "缓释片", "肠溶片", "咀嚼片", "泡腾片", "缓释胶囊", "软胶囊",
-    "胶囊", "颗粒", "口服液", "注射液", "混悬液", "滴眼液", "喷雾剂", "糖浆",
-    "软膏", "乳膏", "片", "丸", "散", "栓",
+    "分散片", "缓释片", "肠溶片", "咀嚼片", "泡腾片", "控释片", "缓释胶囊",
+    "肠溶胶囊", "软胶囊", "胶囊", "颗粒", "口服液", "注射液", "混悬液",
+    "滴眼液", "喷雾剂", "糖浆", "软膏", "乳膏", "片", "丸", "散", "栓",
 ]
 
 
@@ -216,4 +216,8 @@ def correct_medicine(name: str) -> str:
         fixed = base
     else:
         fixed = correct(base, confusion=get_confusion())
+
+    # 纠错结果本身已含剂型（如「蒙脱石散」），不再重复拼接
+    if suffix and fixed.endswith(suffix):
+        return fixed
     return fixed + suffix
