@@ -65,6 +65,8 @@ class Medicine(Base):
     is_cabinet = Column(Boolean, default=False)
     # 是否非处方药（OTC）。处方药不可赠与/转让，仅可自存
     is_otc = Column(Boolean, default=True)
+    # 药品品类（解热镇痛/感冒/抗菌/心血管...），由分类器自动判断
+    category = Column(String(50), default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="medicines")

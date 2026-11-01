@@ -13,12 +13,15 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import require_doctor
-from ..models import BorrowRequest, LockerDropoff, Medicine, Message, User
+from ..models import BorrowRequest, HealthProfile, LockerDropoff, Medicine, Message, User
+from ..safety_engine import evaluate_medication_safety
 from ..schemas import (
     BorrowRequestOut,
     ComplianceDecisionIn,
     ReviewDecisionIn,
     ReviewMedicineOut,
+    SafetyFindingOut,
+    SafetyReportOut,
 )
 
 router = APIRouter(prefix="/api/review", tags=["医生审核"])
@@ -30,13 +33,75 @@ def _sync_request_message(db: Session, request_id: int, new_status: str) -> None
     ).update({"status": new_status})
 
 
+def _evaluate_safety(db: Session, request_id: int) -> SafetyReportOut:
+    """对一笔借药申请做用药安全评估，返回结构化风险报告。
+
+    依据：借药人健康档案（过敏史 / 慢病 / 出生年份 / 备注）+ 借药人正在服用的药品
+    （相互作用）+ 被借药品信息（类别标签 / 适应症 / 是否处方药）。
+    """
+    request = db.query(BorrowRequest).filter(BorrowRequest.id == request_id).first()
+    if request is None:
+        return SafetyReportOut()
+
+    medicine = request.medicine
+    profile = (
+        db.query(HealthProfile)
+        .filter(HealthProfile.user_id == request.borrower_id)
+        .first()
+    )
+    current_meds = [
+        b.medicine_name
+        for b in db.query(BorrowRequest)
+        .filter(
+            BorrowRequest.borrower_id == request.borrower_id,
+            BorrowRequest.status.in_(["approved", "completed"]),
+            BorrowRequest.id != request.id,
+        )
+        .all()
+    ]
+
+    note = request.note or ""
+    if profile and profile.note:
+        note = f"{note}；{profile.note}"
+
+    report = evaluate_medication_safety(
+        medicine_name=request.medicine_name,
+        medicine_symptoms=list(medicine.symptoms) if medicine and medicine.symptoms else [],
+        is_otc=(medicine.is_otc if medicine else True),
+        allergies=list(profile.allergies) if profile and profile.allergies else [],
+        chronic_diseases=list(profile.chronic_diseases) if profile and profile.chronic_diseases else [],
+        birth_year=profile.birth_year if profile else None,
+        note=note,
+        current_meds=current_meds,
+    )
+    return SafetyReportOut(
+        risk_score=report.risk_score,
+        risk_level=report.risk_level,
+        recommendation=report.recommendation,
+        summary=report.summary,
+        findings=[
+            SafetyFindingOut(
+                category=f.category,
+                severity=f.severity,
+                message=f.message,
+                suggestion=f.suggestion,
+            )
+            for f in report.findings
+        ],
+    )
+
+
 @router.get("/borrows", response_model=List[BorrowRequestOut])
 def list_review_borrows(
     status_filter: str = "pending",
     current: User = Depends(require_doctor),
     db: Session = Depends(get_db),
 ):
-    """本小区借药申请审核队列。status: pending / approved / rejected / all。"""
+    """本小区借药申请审核队列。status: pending / approved / rejected / all。
+
+    每个借药申请附带 safety 用药安全评估（含风险分、等级、命中的禁忌项与
+    处置建议），供医生从「人工判断」转为「复核 AI 建议」。
+    """
     query = (
         db.query(BorrowRequest)
         .join(User, BorrowRequest.owner_id == User.id)
@@ -44,7 +109,14 @@ def list_review_borrows(
     )
     if status_filter != "all":
         query = query.filter(BorrowRequest.status == status_filter)
-    return query.order_by(BorrowRequest.created_at.desc()).all()
+    items = query.order_by(BorrowRequest.created_at.desc()).all()
+
+    result: List[BorrowRequestOut] = []
+    for req in items:
+        out = BorrowRequestOut.model_validate(req)
+        out.safety = _evaluate_safety(db, req.id)
+        result.append(out)
+    return result
 
 
 @router.post("/borrows/{request_id}", response_model=BorrowRequestOut)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { api, ApiError, formatTime } from '@/lib/api';
-import { Stethoscope, Pill, User, MapPin, ClipboardCheck } from 'lucide-react';
+import { Stethoscope, Pill, User, MapPin, ClipboardCheck, ShieldAlert } from 'lucide-react';
 import type { BorrowRequest, BorrowStatus } from '@/types';
 
 type Tab = 'pending' | 'approved' | 'rejected';
@@ -20,6 +20,14 @@ const STATUS_BADGE: Record<BorrowStatus, { text: string; cls: string }> = {
   approved: { text: '审核通过', cls: 'bg-emerald-50 text-emerald-600' },
   rejected: { text: '已驳回', cls: 'bg-gray-100 text-gray-500' },
   completed: { text: '已取药完成', cls: 'bg-blue-50 text-blue-600' },
+};
+
+// 用药安全评估的风险等级展示（由 safety_engine 输出）
+const SAFETY_BADGE: Record<string, { text: string; cls: string }> = {
+  critical: { text: '高危 · 建议驳回', cls: 'bg-red-50 text-red-600 border-red-200' },
+  high: { text: '高风险 · 请复核', cls: 'bg-orange-50 text-orange-600 border-orange-200' },
+  medium: { text: '中风险 · 请复核', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  low: { text: '低风险', cls: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
 };
 
 export default function DoctorReviewScreen() {
@@ -134,6 +142,7 @@ export default function DoctorReviewScreen() {
             {list.map((r) => {
               const badge = STATUS_BADGE[r.status];
               const isDeciding = deciding?.id === r.id;
+              const safetyBadge = r.safety ? SAFETY_BADGE[r.safety.riskLevel] : null;
               return (
                 <div key={r.id} className="bg-white rounded-2xl p-4 shadow-sm border border-emerald-50">
                   <div className="flex items-center gap-2 mb-3">
@@ -186,6 +195,33 @@ export default function DoctorReviewScreen() {
                       )}
                     </div>
                   </div>
+
+                  {/* 用药安全评估（AI 规则引擎输出） */}
+                  {r.safety && r.safety.riskLevel !== 'low' && safetyBadge && (
+                    <div className="mt-2 rounded-xl border border-orange-100 bg-orange-50/50 p-3">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <ShieldAlert className="w-4 h-4 text-orange-500" />
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${safetyBadge.cls}`}>
+                          {safetyBadge.text}
+                        </span>
+                        <span className="text-xs text-gray-400">风险分 {r.safety.riskScore}</span>
+                      </div>
+                      <p className="text-xs text-gray-600">{r.safety.summary}</p>
+                      <ul className="mt-2 space-y-1.5">
+                        {r.safety.findings.map((f, i) => (
+                          <li key={i} className="text-xs leading-relaxed">
+                            <span className="inline-block px-1.5 py-0.5 rounded bg-white border border-red-100 text-red-500 font-medium mr-1">
+                              {f.category}
+                            </span>
+                            <span className="text-gray-600">{f.message}</span>
+                            {f.suggestion && (
+                              <span className="block text-orange-600 mt-0.5">→ {f.suggestion}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {r.note && (
                     <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2">

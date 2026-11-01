@@ -26,9 +26,25 @@ export default function ScanScreen({
   const [cameraError, setCameraError] = useState('');
   const [flashOn, setFlashOn] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [recognizedMeta, setRecognizedMeta] = useState<{
+    model?: string;
+    elapsedMs?: number;
+    rawName?: string;
+  } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 识别计时，便于让用户看到“正在处理多少秒”
+  useEffect(() => {
+    if (!recognizing) {
+      setElapsed(0);
+      return;
+    }
+    const timer = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [recognizing]);
 
   // 启动真实摄像头
   useEffect(() => {
@@ -136,11 +152,17 @@ export default function ScanScreen({
       reader.readAsDataURL(file);
     });
 
-  // 交给后端 AI 识别药盒信息
-  const runRecognition = async (imageDataUrl: string) => {
+  // 交给后端 AI 识别药盒信息（支持多张图片：正面 + 背面/有效期面）
+  const runRecognition = async (imageDataUrls: string[]) => {
     setRecognizing(true);
     try {
-      const recognized = await recognizeMedicine(imageDataUrl);
+      const recognized = await recognizeMedicine(imageDataUrls);
+      setRecognizedMeta({
+        model: recognized.model,
+        elapsedMs: recognized.elapsedMs,
+        rawName: recognized.rawName,
+      });
+      const isOtc = recognized.isOtc ?? true;
       setScannedMedicine({
         id: `temp_${Date.now()}`,
         name: recognized.name,
@@ -149,12 +171,13 @@ export default function ScanScreen({
         expiryDate: recognized.expiryDate,
         price: 0,
         status: 'normal',
-        visibility: 'public',
-        shareMode: 'free',
+        visibility: isOtc ? 'public' : 'private',
+        shareMode: isOtc ? 'free' : 'none',
         shareScope: 'building',
         quantity: recognized.quantity,
         unit: recognized.unit,
-        isOtc: true,
+        isOtc,
+        category: recognized.category || undefined,
       });
       setShowResult(true);
     } catch (err) {
@@ -188,7 +211,7 @@ export default function ScanScreen({
     }
 
     stopCamera();
-    await runRecognition(imageDataUrl);
+    await runRecognition([imageDataUrl]);
   };
 
   const handleConfirm = async () => {
@@ -208,6 +231,8 @@ export default function ScanScreen({
       shareScope: scannedMedicine.shareScope,
       quantity: scannedMedicine.quantity,
       unit: scannedMedicine.unit,
+      isOtc: scannedMedicine.isOtc,
+      category: scannedMedicine.category,
     });
     dispatch({ type: 'SHOW_TOAST', message: '药品录入成功！' });
     dispatch({ type: 'SET_TAB', tab: 'home' });
@@ -216,6 +241,7 @@ export default function ScanScreen({
   const handleCancel = () => {
     setShowResult(false);
     setScannedMedicine(null);
+    setRecognizedMeta(null);
     setScanning(true);
     startCamera();
   };
@@ -229,18 +255,21 @@ export default function ScanScreen({
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    // 最多一次选择 3 张（如药盒正面、背面、有效期面），合并识别
+    const files = Array.from(e.target.files ?? []).slice(0, 3);
     // 清空 input，保证连续选择同一张图片也能触发 change
     e.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
 
     stopCamera();
     setScanning(false);
 
     setRecognizing(true);
     try {
-      const raw = await readFileAsDataUrl(file);
-      await runRecognition(await downscaleImage(raw));
+      const urls = await Promise.all(
+        files.map(async (file) => downscaleImage(await readFileAsDataUrl(file))),
+      );
+      await runRecognition(urls);
     } catch (err) {
       dispatch({ type: 'SHOW_TOAST', message: err instanceof Error ? err.message : '图片处理失败' });
       setScanning(true);
@@ -337,7 +366,7 @@ export default function ScanScreen({
         {recognizing && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/60">
             <Spinner className="size-8 text-orange-400" />
-            <p className="text-white text-sm">AI 正在识别药盒信息…</p>
+            <p className="text-white text-sm">AI 正在识别药盒信息…{elapsed > 0 ? ` ${elapsed}s` : ''}</p>
           </div>
         )}
 
@@ -350,13 +379,13 @@ export default function ScanScreen({
         <div className="absolute bottom-6 left-0 right-0 z-10 px-6">
           <div className="flex items-start gap-2 rounded-xl bg-black/50 px-3 py-2 backdrop-blur">
             <Sparkles className="mt-0.5 size-4 shrink-0 text-orange-300" />
-            <p className="text-[11px] leading-4 text-white/80">药品信息由 AI 识别录入，请仔细辨别</p>
+            <p className="text-[11px] leading-4 text-white/80">药品信息由 AI 识别录入，请仔细辨别；相册可一次选择多张（正面 + 背面）</p>
           </div>
         </div>
       </div>
 
       {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+      <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" />
 
       {/* Bottom Actions */}
       <div className="bg-black/80 backdrop-blur px-6 pb-8 pt-4 z-20">
@@ -373,7 +402,7 @@ export default function ScanScreen({
             <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
               <ImageIcon className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xs text-white/70">相册选择</span>
+            <span className="text-xs text-white/70">相册(可多选)</span>
           </button>
         </div>
       </div>
@@ -391,10 +420,32 @@ export default function ScanScreen({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold text-gray-800 truncate">{scannedMedicine.name}</h3>
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${scannedMedicine.isOtc ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                    {scannedMedicine.isOtc ? 'OTC' : '处方药'}
+                  </span>
                 </div>
                 <p className="text-sm text-gray-500">{scannedMedicine.spec}</p>
+                {scannedMedicine.category && (
+                  <p className="text-xs text-orange-500 mt-0.5">品类：{scannedMedicine.category}</p>
+                )}
+                {recognizedMeta?.rawName && (
+                  <p className="text-xs text-indigo-500 mt-0.5">
+                    已自动校正药名：{recognizedMeta.rawName} → {scannedMedicine.name}
+                  </p>
+                )}
+                {!!recognizedMeta?.elapsedMs && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    识别耗时 {(recognizedMeta.elapsedMs / 1000).toFixed(1)} 秒
+                  </p>
+                )}
               </div>
             </div>
+            {!scannedMedicine.isOtc && (
+              <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5 mb-4">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-red-500" />
+                <p className="text-xs leading-5 text-red-600">识别为处方药，将仅保存到家庭药箱，不可共享给邻里。</p>
+              </div>
+            )}
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">适应症</label>

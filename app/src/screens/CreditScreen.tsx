@@ -9,12 +9,13 @@ import {
   TrendingDown,
   TrendingUp,
   Scale,
+  Sparkles,
 } from 'lucide-react';
 
 const RULES = [
-  '按时取药、正常归还：信用保持稳定',
-  '被管理员列入黑名单：-20 并限制借药',
-  '信用分低于 60：自动限制借药与共享',
+  '信用分由模型根据借药履约、共享核验、上报贡献等行为实时计算',
+  '被管理员列入黑名单：直接限制借药',
+  '信用分低于 60：系统自动限制借药与共享',
 ];
 
 export default function CreditScreen() {
@@ -95,6 +96,52 @@ export default function CreditScreen() {
             </div>
           </div>
         )}
+
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-indigo-500" />
+              <h2 className="text-sm font-bold text-gray-800">AI 信用评估</h2>
+            </div>
+            <span className="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
+              逻辑回归模型
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+            <span>违约风险概率</span>
+            <span className="font-medium text-gray-700">
+              {((credit?.riskProb ?? 0) * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mb-4">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-rose-400"
+              style={{ width: `${Math.min(100, (credit?.riskProb ?? 0) * 100)}%` }}
+            />
+          </div>
+
+          <p className="text-[11px] text-gray-400 mb-2">主要影响因素</p>
+          <div className="space-y-2">
+            {(credit?.factors ?? []).map((f) => (
+              <div key={f.name} className="flex items-center justify-between text-xs">
+                <span className="text-gray-700">{f.name.replace(/\(.*\)$/, '')}</span>
+                <span
+                  className={
+                    f.contribution > 0 ? 'text-red-500 font-medium' : 'text-emerald-600 font-medium'
+                  }
+                >
+                  {f.contribution > 0 ? '↑' : '↓'}{' '}
+                  {f.contribution > 0 ? '提高风险' : '降低风险'}{' '}
+                  {Math.abs(f.contribution).toFixed(2)}
+                </span>
+              </div>
+            ))}
+            {(credit?.factors ?? []).length === 0 && (
+              <p className="text-xs text-gray-400">暂无显著影响因素</p>
+            )}
+          </div>
+        </div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-1.5 mb-3">

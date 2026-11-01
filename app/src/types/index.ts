@@ -33,6 +33,7 @@ export interface Medicine {
   images?: string[];
   ownerId?: string;
   isOtc: boolean;
+  category?: string;
   complianceStatus?: ComplianceStatus;
   dropoffStatus?: '' | DropoffStatus;
 }
@@ -146,6 +147,27 @@ export interface BorrowRequest {
   amount: number;
   paymentStatus?: 'pending' | 'paid';
   createdAt: string;
+  /** 用药安全评估（医生审核列表附带） */
+  safety?: SafetyReport;
+}
+
+// 用药安全评估
+export type SafetySeverity = 'critical' | 'high' | 'medium' | 'low';
+export type SafetyRecommendation = 'approve' | 'review' | 'reject';
+
+export interface SafetyFinding {
+  category: string;
+  severity: SafetySeverity;
+  message: string;
+  suggestion: string;
+}
+
+export interface SafetyReport {
+  riskScore: number;
+  riskLevel: SafetySeverity;
+  recommendation: SafetyRecommendation;
+  summary: string;
+  findings: SafetyFinding[];
 }
 
 // 医生端：共享药合规审核项
@@ -436,11 +458,18 @@ export interface Redemption {
 }
 
 // ---------------------------------------------------------------- 信用
+export interface CreditFactor {
+  name: string;
+  contribution: number; // 正 = 提高违约风险，负 = 降低
+}
+
 export interface CreditProfile {
   score: number;
   status: 'normal' | 'blacklisted';
   reason: string;
   level: string;
+  riskProb: number;
+  factors: CreditFactor[];
 }
 
 export interface CreditLog {

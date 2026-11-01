@@ -94,6 +94,7 @@ class MedicineBase(BaseModel):
     dosage: str = ""
     images: List[str] = []
     is_otc: bool = True
+    category: str = ""
 
 
 class MedicineCreate(MedicineBase):
@@ -116,6 +117,7 @@ class MedicineUpdate(BaseModel):
     dosage: Optional[str] = None
     images: Optional[List[str]] = None
     is_otc: Optional[bool] = None
+    category: Optional[str] = None
 
 
 class MedicineOut(ORMModel):
@@ -136,6 +138,7 @@ class MedicineOut(ORMModel):
     dosage: str = ""
     images: List[str] = []
     is_otc: bool = True
+    category: str = ""
     compliance_status: str = "pending"
     dropoff_status: str = ""
     created_at: datetime
@@ -226,6 +229,21 @@ class BorrowRequestCreate(BaseModel):
     note: str = ""
 
 
+class SafetyFindingOut(BaseModel):
+    category: str
+    severity: str  # critical / high / medium / low
+    message: str
+    suggestion: str = ""
+
+
+class SafetyReportOut(BaseModel):
+    risk_score: int = 0
+    risk_level: str = "low"
+    recommendation: str = "approve"  # approve / review / reject
+    summary: str = ""
+    findings: List[SafetyFindingOut] = []
+
+
 class BorrowRequestOut(ORMModel):
     id: int
     medicine_id: int
@@ -252,6 +270,7 @@ class BorrowRequestOut(ORMModel):
     payment_status: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    safety: Optional[SafetyReportOut] = None  # 用药安全评估（医生审核列表附带）
 
 
 # ---------------------------------------------------------------- 医生审核 / 管理员
@@ -381,7 +400,8 @@ class TransactionOut(BaseModel):
 
 # ---------------------------------------------------------------- AI 识药
 class RecognizeIn(BaseModel):
-    image: str  # dataURL 或裸 base64
+    image: str = ""                 # 单图（兼容旧调用），dataURL 或裸 base64
+    images: List[str] = []          # 多图（正面/背面），优先使用
     hint: str = ""
 
 
@@ -394,6 +414,11 @@ class RecognizedMedicineOut(BaseModel):
     unit: str = "粒"
     daysLeft: Optional[int] = None
     confidence: str = "medium"
+    isOtc: bool = True          # 自动判定的处方药/非处方药
+    category: str = ""          # 自动判定的药品品类
+    model: str = ""             # 实际生效的识别模型
+    elapsedMs: int = 0          # 本次识别耗时（毫秒）
+    rawName: str = ""           # 校正前的原始识别名（与 name 不同时用于提示）
 
 
 class ExpiryScanItem(BaseModel):
@@ -591,11 +616,18 @@ class RedemptionOut(ORMModel):
 
 
 # ---------------------------------------------------------------- 信用与黑名单
+class CreditRiskFactorOut(BaseModel):
+    name: str
+    contribution: float  # 正 = 提高违约风险，负 = 降低
+
+
 class CreditOut(BaseModel):
     score: int = 100
     status: str = "normal"
     reason: str = ""
     level: str = "优秀"
+    risk_prob: float = 0.0                      # 模型给出的违约概率
+    factors: List[CreditRiskFactorOut] = []     # 影响信用分的主要因素
 
 
 class CreditLogOut(ORMModel):
@@ -618,3 +650,16 @@ class AdminCreditOut(BaseModel):
 class AdminCreditActionIn(BaseModel):
     action: str  # blacklist / unblacklist
     reason: str = ""
+
+
+# ---------------------------------------------------------------- 信用风险模型（逻辑回归）
+class CreditRiskIn(BaseModel):
+    """8 维行为特征，顺序见 credit_model.FEATURE_NAMES。"""
+    features: List[float]
+
+
+class CreditRiskOut(BaseModel):
+    risk_prob: float          # 违约概率 0~1
+    credit_score: float       # 模型信用分 0~100
+    level: str                # 优秀/良好/一般/受限
+    factors: List[CreditRiskFactorOut]

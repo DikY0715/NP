@@ -182,8 +182,14 @@ export default function MedicineDetailScreen() {
                 <p className="text-sm text-white/80">{medicine.spec}</p>
               )}
               {!isEditing && (
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <span className={`text-xs px-3 py-1 rounded-full font-medium ${statusClass}`}>{statusLabel}</span>
+                  <span className={`text-xs px-3 py-1 rounded-full font-medium ${medicine.isOtc ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    {medicine.isOtc ? '非处方药(OTC)' : '处方药'}
+                  </span>
+                  {medicine.category && (
+                    <span className="text-xs px-3 py-1 rounded-full font-medium bg-white/20 text-white">{medicine.category}</span>
+                  )}
                 </div>
               )}
             </div>

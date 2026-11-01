@@ -15,7 +15,9 @@ from ..models import (
     Message,
     User,
 )
-from ..rewards import add_points, adjust_credit, get_credit_profile
+from ..credit_model import FEATURE_NAMES, get_model
+from ..credit_features import extract_features
+from ..rewards import BLACKLIST_THRESHOLD, add_points, adjust_credit, get_credit_profile
 from ..schemas import (
     AdminCreditActionIn,
     AdminCreditOut,
@@ -24,6 +26,9 @@ from ..schemas import (
     AdverseReportOut,
     CreditLogOut,
     CreditOut,
+    CreditRiskFactorOut,
+    CreditRiskIn,
+    CreditRiskOut,
 )
 
 router = APIRouter(prefix="/api", tags=["用药安全"])
@@ -193,17 +198,73 @@ def handle_report(
 
 
 # ---------------------------------------------------------------- 信用
+@router.post("/credit/risk", response_model=CreditRiskOut)
+def assess_credit_risk(
+    payload: CreditRiskIn,
+    current: User = Depends(require_resident),
+):
+    """用逻辑回归模型对居民行为特征做信用风险评分（可解释）。
+
+    输入 8 维行为特征（顺序见 FEATURE_NAMES），输出违约概率、信用分与各特征贡献。
+    """
+    if len(payload.features) != len(FEATURE_NAMES):
+        raise HTTPException(
+            status_code=400, detail=f"需要 {len(FEATURE_NAMES)} 维行为特征"
+        )
+    model = get_model()
+    prob = model.predict_proba(payload.features)
+    score = model.credit_score(payload.features)
+    factors = [
+        CreditRiskFactorOut(name=name, contribution=round(c, 3))
+        for name, c in model.contributions(payload.features)
+    ]
+    return CreditRiskOut(
+        risk_prob=round(prob, 4),
+        credit_score=score,
+        level=_credit_level(int(score)),
+        factors=factors,
+    )
+
+
 @router.get("/credit", response_model=CreditOut)
 def my_credit(
     current: User = Depends(require_resident), db: Session = Depends(get_db)
 ):
+    """信用分由逻辑回归模型根据真实行为特征实时计算，并返回主要影响因素。"""
     profile = get_credit_profile(db, current.id)
+    features = extract_features(db, current.id)
+    model = get_model()
+    prob = model.predict_proba(features)
+    score = int(round(model.credit_score(features)))
+
+    profile.score = score
+    # 与 adjust_credit 保持一致：跌破阈值自动限制，回升后自动解除（管理员拉黑不受影响）
+    if score < BLACKLIST_THRESHOLD and profile.status == "normal":
+        profile.status = "blacklisted"
+        profile.reason = f"信用分低于 {BLACKLIST_THRESHOLD}：模型评估风险偏高"
+    elif (
+        score >= BLACKLIST_THRESHOLD
+        and profile.status == "blacklisted"
+        and profile.reason.startswith("信用分低于")
+    ):
+        profile.status = "normal"
+        profile.reason = ""
     db.commit()
+
+    # 只展示真正有影响的 3 个因素（贡献过小视为无显著影响）
+    factors = [item for item in model.contributions(features) if abs(item[1]) >= 0.05]
+    factors.sort(key=lambda t: -abs(t[1]))
+    factors = factors[:3]
     return CreditOut(
-        score=profile.score,
+        score=score,
         status=profile.status,
         reason=profile.reason or "",
-        level=_credit_level(profile.score),
+        level=_credit_level(score),
+        risk_prob=round(prob, 4),
+        factors=[
+            CreditRiskFactorOut(name=name, contribution=round(c, 3))
+            for name, c in factors
+        ],
     )
 
 

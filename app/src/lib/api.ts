@@ -44,6 +44,8 @@ import type {
   CreditProfile,
   CreditLog,
   AdminCredit,
+  SafetyReport,
+  SafetyFinding,
 } from '@/types';
 
 const API_BASE = (
@@ -206,6 +208,7 @@ interface RawMedicine {
   status: string;
   created_at: string;
   is_otc: boolean;
+  category: string;
   compliance_status: string;
   dropoff_status: string;
 }
@@ -258,6 +261,21 @@ interface RawMessage {
   timestamp: string | null;
 }
 
+interface RawSafetyFinding {
+  category: string;
+  severity: string;
+  message: string;
+  suggestion: string;
+}
+
+interface RawSafetyReport {
+  risk_score: number;
+  risk_level: string;
+  recommendation: string;
+  summary: string;
+  findings: RawSafetyFinding[];
+}
+
 interface RawBorrowRequest {
   id: number;
   medicine_id: number;
@@ -284,6 +302,7 @@ interface RawBorrowRequest {
   payment_status: string | null;
   created_at: string;
   updated_at: string;
+  safety: RawSafetyReport | null;
 }
 
 interface RawReviewMedicine {
@@ -394,6 +413,11 @@ interface RawRecognized {
   quantity: number;
   unit: string;
   daysLeft: number | null;
+  isOtc: boolean;
+  category: string;
+  model?: string;
+  elapsedMs?: number;
+  rawName?: string;
 }
 
 interface RawAuthResult {
@@ -435,6 +459,7 @@ function toMedicine(raw: RawMedicine): Medicine {
     dosage: raw.dosage || undefined,
     images: raw.images && raw.images.length > 0 ? raw.images : undefined,
     isOtc: raw.is_otc ?? true,
+    category: raw.category || undefined,
     complianceStatus: (raw.compliance_status ?? 'pending') as Medicine['complianceStatus'],
     dropoffStatus: (raw.dropoff_status ?? '') as Medicine['dropoffStatus'],
   };
@@ -510,6 +535,21 @@ function toTransaction(raw: RawTransaction): Transaction {
   };
 }
 
+function toSafetyReport(raw: RawSafetyReport): SafetyReport {
+  return {
+    riskScore: raw.risk_score,
+    riskLevel: raw.risk_level as SafetyReport['riskLevel'],
+    recommendation: raw.recommendation as SafetyReport['recommendation'],
+    summary: raw.summary || '',
+    findings: (raw.findings ?? []).map((f: RawSafetyFinding): SafetyFinding => ({
+      category: f.category,
+      severity: f.severity as SafetyFinding['severity'],
+      message: f.message,
+      suggestion: f.suggestion || '',
+    })),
+  };
+}
+
 function toBorrowRequest(raw: RawBorrowRequest): BorrowRequest {
   return {
     id: String(raw.id),
@@ -539,6 +579,7 @@ function toBorrowRequest(raw: RawBorrowRequest): BorrowRequest {
         ? raw.payment_status
         : undefined,
     createdAt: raw.created_at,
+    safety: raw.safety ? toSafetyReport(raw.safety) : undefined,
   };
 }
 
@@ -670,6 +711,7 @@ const MEDICINE_FIELD_MAP: Record<string, string> = {
   dosage: 'dosage',
   images: 'images',
   isOtc: 'is_otc',
+  category: 'category',
 };
 
 function medicinePayload(input: Record<string, unknown>): Record<string, unknown> {
@@ -859,6 +901,8 @@ interface RawCredit {
   status: string;
   reason: string;
   level: string;
+  risk_prob?: number;
+  factors?: { name: string; contribution: number }[];
 }
 
 interface RawCreditLog {
@@ -952,6 +996,11 @@ function toCredit(raw: RawCredit): CreditProfile {
     status: raw.status === 'blacklisted' ? 'blacklisted' : 'normal',
     reason: raw.reason || '',
     level: raw.level || '',
+    riskProb: raw.risk_prob ?? 0,
+    factors: (raw.factors ?? []).map((f) => ({
+      name: f.name,
+      contribution: f.contribution,
+    })),
   };
 }
 
@@ -1549,11 +1598,12 @@ export const api = {
     return toAdminCredit(raw);
   },
 
-  // AI 识药（密钥由服务端持有）
-  async recognize(imageDataUrl: string): Promise<RawRecognized> {
+  // AI 识药（密钥由服务端持有）；支持一次上传多张图片（正面/背面）
+  async recognize(imageDataUrls: string | string[]): Promise<RawRecognized> {
+    const images = (Array.isArray(imageDataUrls) ? imageDataUrls : [imageDataUrls]).filter(Boolean);
     return request<RawRecognized>('/api/ai/recognize', {
       method: 'POST',
-      body: { image: imageDataUrl },
+      body: { images, image: images[0] ?? '' },
     });
   },
 };

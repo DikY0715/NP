@@ -3,9 +3,11 @@ import { api, type RecognizedMedicine } from '@/lib/api';
 
 export type { RecognizedMedicine };
 
-/** 调用后端识别药盒信息，失败时抛出带可读文案的 Error */
-export async function recognizeMedicine(imageDataUrl: string): Promise<RecognizedMedicine> {
-  const result = await api.recognize(imageDataUrl);
+/** 调用后端识别药盒信息（支持多张图片），失败时抛出带可读文案的 Error */
+export async function recognizeMedicine(
+  imageDataUrls: string | string[],
+): Promise<RecognizedMedicine> {
+  const result = await api.recognize(imageDataUrls);
   if (!result.name) {
     throw new Error('未识别出药品名称，请将药盒正面放入取景框后重试');
   }
